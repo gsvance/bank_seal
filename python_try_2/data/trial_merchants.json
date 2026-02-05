@@ -1,0 +1,15 @@
+{
+  "class": "Merchants",
+  "full_names_by_id": {
+    "757e9c44": "Starbucks Coffee",
+    "e2bb0be5": "Fry's Food and Drug"
+  },
+  "nicknames_by_id": {
+    "757e9c44": [
+      "starbucks"
+    ],
+    "e2bb0be5": [
+      "frys"
+    ]
+  }
+}

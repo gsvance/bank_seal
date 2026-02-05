@@ -1,0 +1,8 @@
+{
+  "config name": "trial",
+  "description": "the default configuration",
+  "ledger name": "trial",
+  "merchants name": "trial",
+  "split money column": false,
+  "starting balance": "$0.00"
+}

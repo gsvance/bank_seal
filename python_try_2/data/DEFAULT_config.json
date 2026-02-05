@@ -1,0 +1,8 @@
+{
+  "config name": "DEFAULT",
+  "description": "the default configuration",
+  "ledger name": "DEFAULT",
+  "merchants name": "DEFAULT",
+  "split money column": false,
+  "starting balance": "$0.00"
+}

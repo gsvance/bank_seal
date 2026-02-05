@@ -1,0 +1,6 @@
+the Command class needs a new method for solely declaring parameters
+it'll have statements like "self.date = declare_parameter(Date, indices=[1])"
+the Command ABC can have an __init__ that starts with self.declare_parameters
+then the Signature code will need to search the instance __dict__ for params
+treat it a little bit like my RestartReference in the PyEPM code
+set them up including the incorrect type references
