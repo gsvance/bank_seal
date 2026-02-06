@@ -1,0 +1,6 @@
+# Python virtual environment
+.venv/
+
+# Rust files that keep re-appearing
+bankrs/Cargo.lock
+bankrs/target/
