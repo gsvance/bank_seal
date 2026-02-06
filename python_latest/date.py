@@ -1,35 +1,60 @@
-"""Implements the class used for representing calendar dates.
+"""Implements a custom dataclass for representing calendar dates."""
 
-Last modified 26 Jun 2023 by Greg Vance.
-"""
-
-
+import dataclasses
 import datetime
 import re
-from typing import Any, Dict, Tuple
+from typing import Any, Final, Self
 
 
-YEAR_MIN = 1980  # Earliest acceptable year (used for sanity checking)
-YEAR_MAX = 2100  # Latest acceptable year (also used for sanity checking)
+# Earliest and latest acceptable years (used for sanity checking)
+YEAR_MIN: Final[int] = 1980
+YEAR_MAX: Final[int] = 2100
 
-MONTH_MIN = 1
-MONTH_MAX = 12
-MONTH_COUNT = MONTH_MAX - MONTH_MIN + 1
-MONTH_NAMES = {
-    1: "Jan", 2: "Feb", 3: "Mar", 4: "Apr", 5: "May", 6: "Jun",
-    7: "Jul", 8: "Aug", 9: "Sep", 10: "Oct", 11: "Nov", 12: "Dec"
+
+# Constants related to the months of the year
+MONTH_NAMES: Final[dict[int, str]] = {
+    1: "Jan",
+    2: "Feb",
+    3: "Mar",
+    4: "Apr",
+    5: "May",
+    6: "Jun",
+    7: "Jul",
+    8: "Aug",
+    9: "Sep",
+    10: "Oct",
+    11: "Nov",
+    12: "Dec",
 }
-MONTH_NUMBERS = {name: number for (number, name) in MONTH_NAMES.items()}
-
-DAY_MIN = 1
-DAYS_IN_MONTH = {
-    1: 31, 2: 28, 3: 31, 4: 30, 5: 31, 6: 30,
-    7: 31, 8: 31, 9: 30, 10: 31, 11: 30, 12: 31
+MONTH_NUMBERS: Final[dict[str, int]] = {
+    name: number for (number, name) in MONTH_NAMES.items()
 }
-LEAP_DAY_MONTH = 2  # February is the month that gets a leap day
+MONTH_COUNT: Final[int] = len(MONTH_NAMES)
+MONTH_MIN: Final[int] = min(MONTH_NAMES.keys())
+MONTH_MAX: Final[int] = max(MONTH_NAMES.keys())
 
-# Match dates using the tradional American format "m/d/y"
-DATE_FORMAT_REGEX_USA = re.compile(r"""
+
+# Constants related to the day numbers
+DAY_MIN: Final[int] = 1  # Months don't have a "day zero"
+DAYS_IN_MONTH: Final[dict[int, int]] = {
+    1: 31,
+    2: 28,  # In non-leap years
+    3: 31,
+    4: 30,
+    5: 31,
+    6: 30,
+    7: 31,
+    8: 31,
+    9: 30,
+    10: 31,
+    11: 30,
+    12: 31,
+}
+LEAP_DAY_MONTH: Final[int] = 2  # February is the month that gets a leap day
+
+
+# Regex to match dates using the traditional American format "m/d/y"
+DATE_FORMAT_REGEX_USA: Final[re.Pattern[str]] = re.compile(r"""
     \A\s*           # Optional leading whitespace
     (?P<month>      # The month comes first and consists of
         \d{1,2}     # either one or two digits
@@ -45,8 +70,9 @@ DATE_FORMAT_REGEX_USA = re.compile(r"""
     \s*\Z           # Optional trailing whitespace
 """, re.VERBOSE)
 
-# Match dates using the more international format "d mmm y"
-DATE_FORMAT_REGEX_INTL = re.compile(r"""
+
+# Regex to match dates using the more international format "d mmm y"
+DATE_FORMAT_REGEX_INTL: Final[re.Pattern[str]] = re.compile(r"""
     \A\s*               # Optional leading whitespace
     (?P<day>            # First comes the day, which consists of
         \d{1,2}         # either one or two digits
@@ -63,35 +89,39 @@ DATE_FORMAT_REGEX_INTL = re.compile(r"""
 """, re.VERBOSE)
 
 
+@dataclasses.dataclass(
+    repr=False,
+    order=True,
+    frozen=True,
+    match_args=False,
+    slots=True,
+)
 class Date:
     """Relatively simple custom class representing a calendar date.
 
-    It has a bunch of sanity checks, a nice string representation, and the
-    ability to chronologically order itself relative to other instances.
-    Objects of this class are hashable and should be treated as immutable.
+    It has a bunch of sanity checks, a parsing constructor, and a nice string
+    representation.
     """
+    year: int
+    month: int
+    day: int
 
-    __slots__ = ("_year", "_month", "_day")
+    def __post_init__(self) -> None:
+        self._validate()
 
     # Constructors
 
-    def __init__(self, year: int, month: int, day: int) -> None:
-        self._year = year  # Full four-digit year
-        self._month = month
-        self._day = day
-        self._validate()
-
     @classmethod
-    def today(cls) -> 'Date':
+    def today(cls) -> Self:
         """Construct a new Date object using today's date.
 
-        The current date is obtained using the built-in datetime module.
+        The current date is obtained using the datetime module.
         """
         dt_date = datetime.date.today()
-        return Date(dt_date.year, dt_date.month, dt_date.day)
+        return cls(dt_date.year, dt_date.month, dt_date.day)
 
     @classmethod
-    def infer_year(cls, year_hint: None | int, month: int, day: int) -> 'Date':
+    def infer_year(cls, year_hint: int | None, month: int, day: int) -> Self:
         """Create a new Date object with incomplete year information.
 
         Return a Date having the given month and day, but whose year is
@@ -104,13 +134,13 @@ class Date:
         """
         if isinstance(year_hint, int) and 1000 <= year_hint <= 9999:
             four_digit_year = year_hint
-            return Date(four_digit_year, month, day)
+            return cls(four_digit_year, month, day)
 
-        elif isinstance(year_hint, int) and 0 <= year_hint <= 99:
+        if isinstance(year_hint, int) and 0 <= year_hint <= 99:
             two_digit_year = year_hint
 
             # Figure out the current year and the century part of that year
-            current_year = Date.today().year
+            current_year = cls.today().year
             current_century = (current_year // 100) * 100
 
             # Given a two-digit year hint, we will infer a four-digit year by
@@ -126,7 +156,7 @@ class Date:
             # first minimal element encountered in the event that it finds
             # more than one such element.
             century_options = [
-                current_century, current_century - 100, current_century + 100
+                current_century, current_century - 100, current_century + 100,
             ]
             inferred_century = min(
                 century_options,
@@ -134,10 +164,10 @@ class Date:
                     (century + two_digit_year) - current_year
                 )
             )
-            return Date(inferred_century + two_digit_year, month, day)
+            return cls(inferred_century + two_digit_year, month, day)
 
-        elif year_hint is None:
-            today = Date.today()
+        if year_hint is None:
+            today = cls.today()
             current_year, current_month = today.year, today.month
 
             # Without a year hint of any kind, we will infer the four-digit
@@ -155,13 +185,12 @@ class Date:
                     - (current_year * MONTH_COUNT + current_month - MONTH_MIN)
                 )
             )
-            return Date(inferred_year, month, day)
+            return cls(inferred_year, month, day)
 
-        else:
-            raise ValueError(f"year hint {year_hint!r} is not usable")
+        raise ValueError(f"year hint {year_hint!r} is not usable")
 
     @classmethod
-    def parse(cls, s: str) -> 'Date':
+    def parse(cls, s: str) -> Self:
         """Parse a Date object from one of two string representations.
 
         Return a new Date derived from parsing a string of the form "m/d/y" or
@@ -171,55 +200,54 @@ class Date:
         "d mmm" formats. Incomplete year information is used to infer a
         four-digit year using the Date.infer_year() constructor.
         """
-        regex_match_USA = DATE_FORMAT_REGEX_USA.fullmatch(s)
+        regex_match_usa = DATE_FORMAT_REGEX_USA.fullmatch(s)
         regex_match_intl = DATE_FORMAT_REGEX_INTL.fullmatch(s)
 
-        if regex_match_USA:
-            month = int(regex_match_USA.group("month"))
-            day = int(regex_match_USA.group("day"))
-            year_group = regex_match_USA.group("year")
-            year_hint = int(year_group) if (year_group is not None) else None
-            return Date.infer_year(year_hint, month, day)
+        if regex_match_usa:
+            month = int(regex_match_usa.group("month"))
+            day = int(regex_match_usa.group("day"))
+            year_group = regex_match_usa.group("year")
+            year_hint = None if year_group is None else int(year_group)
+            return cls.infer_year(year_hint, month, day)
 
-        elif regex_match_intl:
+        if regex_match_intl:
             day = int(regex_match_intl.group("day"))
-            month_group = regex_match_intl.group("month")
+            month_group = str(regex_match_intl.group("month"))
             if month_group in MONTH_NUMBERS:
                 month = MONTH_NUMBERS[month_group]
             else:
                 raise ValueError(f"unknown month name: {month_group!r}")
             year_group = regex_match_intl.group("year")
-            year_hint = int(year_group) if (year_group is not None) else None
-            return Date.infer_year(year_hint, month, day)
+            year_hint = None if year_group is None else int(year_group)
+            return cls.infer_year(year_hint, month, day)
 
-        else:
-            raise ValueError(f"failed to parse date: {s!r}")
+        raise ValueError(f"failed to parse date: {s!r}")
 
     @classmethod
-    def deserialize(cls, obj: Dict[str, Any]) -> 'Date':
+    def deserialize(cls, obj: dict[str, Any]) -> Self:
         """Reconstruct a date which was serialized to a JSON object (dict)."""
         assert set(obj.keys()) == {"class", "year", "month", "day"}
         assert obj["class"] == "Date"
         assert isinstance(obj["year"], int)
         assert isinstance(obj["month"], int)
         assert isinstance(obj["day"], int)
-        return Date(obj["year"], obj["month"], obj["day"])
+        return cls(obj["year"], obj["month"], obj["day"])
 
     # Output methods
 
     def __str__(self) -> str:
-        return f"{self._day} {self.name_of_month()} {self._year}"
+        return f"{self.day} {self.name_of_month} {self.year}"
 
     def __repr__(self) -> str:
-        return f"Date({self._year}, {self._month}, {self._day})"
+        return f"Date({self.year}, {self.month}, {self.day})"
 
-    def serialize(self) -> Dict[str, Any]:
+    def serialize(self) -> dict[str, Any]:
         """Convert this date to a dict (object) that JSON can comprehend."""
         return {
             "class": "Date",
-            "year": self._year,
-            "month": self._month,
-            "day": self._day,
+            "year": self.year,
+            "month": self.month,
+            "day": self.day,
         }
 
     # Calendar functions
@@ -227,82 +255,38 @@ class Date:
     def _validate(self) -> None:
         # Run some calendar sanity checks and raise an error if any fail
 
-        if self._year < YEAR_MIN:
-            raise ValueError(f"year {self._year} is before {YEAR_MIN}")
-        if self._year > YEAR_MAX:
-            raise ValueError(f"year {self._year} is after {YEAR_MAX}")
+        if self.year < YEAR_MIN:
+            raise ValueError(f"year {self.year} is before {YEAR_MIN}")
+        if self.year > YEAR_MAX:
+            raise ValueError(f"year {self.year} is after {YEAR_MAX}")
 
-        if self._month < MONTH_MIN or self._month > MONTH_MAX:
-            raise ValueError(f"illegal month of the year: {self._month}")
+        if self.month < MONTH_MIN or self.month > MONTH_MAX:
+            raise ValueError(f"illegal month of the year: {self.month}")
 
-        if self._day < DAY_MIN:
-            raise ValueError(f"illegal day of the month: {self._day}")
-        if self._day > self.length_of_month():
+        if self.day < DAY_MIN:
+            raise ValueError(f"illegal day of the month: {self.day}")
+        if self.day > self.length_of_month():
             raise ValueError(f"{self!s} is after the end of the month")
 
+    @property
     def name_of_month(self) -> str:
-        return MONTH_NAMES[self._month]
+        """The name of the month containing this date."""
+        return MONTH_NAMES[self.month]
 
     def length_of_month(self) -> int:
         """Return the total number of days in this date's month.
 
         When necessary, use the date's year to account for leap days.
         """
-        if self._month == LEAP_DAY_MONTH and self.in_leap_year():
+        if self.month == LEAP_DAY_MONTH and self.in_leap_year():
             leap_day = 1
         else:
             leap_day = 0
-        return DAYS_IN_MONTH[self._month] + leap_day
+        return DAYS_IN_MONTH[self.month] + leap_day
 
     def in_leap_year(self) -> bool:
         """Return whether this date is in a year that is a leap year."""
-        multiple_of_4 = self._year % 4 == 0
-        not_a_century = self._year % 100 != 0
-        multiple_of_400 = self._year % 400 == 0
+        multiple_of_4 = self.year % 4 == 0
+        not_a_century = self.year % 100 != 0
+        multiple_of_400 = self.year % 400 == 0
         return multiple_of_4 and (not_a_century or multiple_of_400)
-
-    # Properties for attribute access
-
-    @property
-    def year(self) -> int:
-        return self._year
-
-    @property
-    def month(self) -> int:
-        return self._month
-
-    @property
-    def day(self) -> int:
-        return self._day
-
-    # Chronological ordering
-
-    def _order_key(self) -> Tuple[int, int, int]:
-        # Assemble a standard tuple that can be used for ordering Dates
-        return (self._year, self._month, self._day)
-
-    def __lt__(self, other: 'Date') -> bool:
-        return self._order_key() < other._order_key()
-
-    def __le__(self, other: 'Date') -> bool:
-        return self._order_key() <= other._order_key()
-
-    def __eq__(self, other: 'Date') -> bool:
-        return self._order_key() == other._order_key()
-
-    def __ne__(self, other: 'Date') -> bool:
-        return self._order_key() != other._order_key()
-
-    def __gt__(self, other: 'Date') -> bool:
-        return self._order_key() > other._order_key()
-
-    def __ge__(self, other: 'Date') -> bool:
-        return self._order_key() >= other._order_key()
-
-    # Other methods
-
-    def __hash__(self) -> int:
-        # Meh, go ahead and make Date objects hashable
-        # It leans into my intent to treat them as immutable
-        # And being able to use dates as dict keys might be useful
-        return hash((self._year, self._month, self._day))
