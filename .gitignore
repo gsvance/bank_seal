@@ -1,3 +1,6 @@
+# Pre-compiled Python code
+__pycache__/
+
 # Python virtual environment
 .venv/
 

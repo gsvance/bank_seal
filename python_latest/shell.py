@@ -1,11 +1,24 @@
-from collections import deque
 import dataclasses
 from typing import Any, Final
 
+try:
+    import readline
+except ImportError:
+    readline = None
 
-WELCOME_MESSAGE: Final[str] = (
-    "Welcome to the banking shell!\nType 'help' or another command"
+
+READLINE_STATUS: Final[str] = (
+    "Successfully imported readline module for this platform."
+    if readline is not None else
+    "No importable readline module was found on this platform."
 )
+
+WELCOME_MESSAGE: Final[str] = "\n".join([
+    "Welcome to the banking shell!",
+    READLINE_STATUS,
+    "Type 'help' or another command.",
+])
+
 SHELL_PROMPT: Final[str] = "$> "
 
 
@@ -21,7 +34,7 @@ class Shell:
         else:
             print()
 
-    def get_words(self) -> deque[str]:
+    def get_words(self) -> list[str]:
         line = input(SHELL_PROMPT)
         words = split_words(line)
         return words
@@ -65,9 +78,9 @@ DOUBLE_QUOTE: Final[str] = '"'
 BACKSLASH: Final[str] = '\\'
 
 
-def split_words(line: str) -> deque[str]:
+def split_words(line: str) -> list[str]:
 
-    args: deque[str] = deque()
+    args: list[str] = []
     state: SplitState = BetweenArgs(
         seen_space=True,  # Ready to parse first arg immediately
     )

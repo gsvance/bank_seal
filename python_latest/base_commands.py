@@ -1,20 +1,19 @@
-from abc import ABC, abstractmethod
-from collections import deque
-from collections.abc import Sequence
-from typing import Any
+import abc
+from typing import Any, override, Self
 
 from data import Data
 from name import Name
-from parsers import parse_str
-from signature import ArgumentParseError, Signature
+from parameters import (
+    ArgumentParseError,  declare_parameter, Parameter, parse_arguments,
+)
 
 
 class CommandRegistryError(Exception):
     """Something went wrong while creating the registry of shell commands."""
 
 
-class Command(ABC):
-    _registry: dict[Name, type['Command']] = {}
+class Command(abc.ABC):
+    _registry: dict[Name, type[Self]] = {}
 
     @classmethod
     def __init_subclass__(cls, /, identifier: str | None, **kwargs) -> None:
@@ -30,15 +29,14 @@ class Command(ABC):
         Here, this method adds the new subclass to the command registry with a
         unique identifier string for use with the shell. The identifier string
         should either be a valid name, or be set explicitly to None to exclude
-        the new command from the registry. This method also forces the new
-        subclass to generate its parameter signature.
+        the new command from the registry.
         """
         # Call the same method for object. This *should* do nothing, but will
         # throw an exception if there are any extra keyword arguments.
         super().__init_subclass__(**kwargs)
 
         name = None if identifier is None else Name(identifier)
-        cls.IDENTIFIER = name
+        cls.IDENTIFIER: Name | None = name
 
         # Register the new subclass as an available shell command unless its
         # identifier was None. Note that Command and its subclass are able to
@@ -51,18 +49,13 @@ class Command(ABC):
                 )
             cls._registry[name] = cls
 
-        # Force the new subclass to generate and save its signature now. This
-        # could be done lazily the first time the command is invoked, but that
-        # might add a weird delay and it would be more complicated to code up.
-        # An advantage of this strategy is that it forces any signature errors
-        # to happen on program startup instead of waiting until the user calls
-        # the broken command.
-        #cls.SIGNATURE = cls.generate_signature()
-
+    # Note: this class method needs to have a return type of Command (instead
+    # of Self) because it returns subclass instances rather than instances of
+    # *this* class specifically
     @classmethod
-    def create(cls, words: deque[str]) -> 'Command':
+    def create(cls, words: list[str]) -> 'Command':
         try:
-            identifier = words.popleft()
+            identifier = words.pop(0)
         except IndexError:
             return NothingCommand([])
 
@@ -76,62 +69,58 @@ class Command(ABC):
         try:
             return command_subclass(args)
         except ArgumentParseError as e:
-            return ArgumentErrorCommand(e.args)
+            return ArgumentErrorCommand(list(e.args))
 
-    def __init__(self, args: Sequence[str]) -> None:
-        # Let the subclass declare its parameters as instance attriibutes
-        self.declare_parameters()
-
-        # Detect the declared parameters using introspection and validate them
-        parameters = {}
-        for attribute_name, attribute in self.__dict__.items():
-            if not isinstance(attribute, Parameter):
-                continue
-            for parameter in parameters.values():
-                parameter.check_for_obvious_conflicts(attribute)
-            parameters[attribute_name] = attribute
-            setattr(self, attribute_name, None)
-
-        # Parse the arguments by matching them against the parameters
-        matrix = ParseMatchMatrix(args, parameters)
-        while matrix.is_not_empty():
-            parsed_arg, matched_param = matrix.pop_match()
-            setattr(self, matched_param, parsed_arg)
-
-    @abstractmethod
+    @abc.abstractmethod
     def declare_parameters(self) -> None:
         ...
 
-    def parse_arguments(args: Sequence[str]) -> None:
-        pass
+    def __init__(self, args: list[str]) -> None:
+        # Let the subclass declare its parameters as instance attributes
+        self.declare_parameters()
 
-    @abstractmethod
+        # Now detect the declared parameters using introspection
+        params = [
+            attribute for attribute in vars(self).values()
+            if isinstance(attribute, Parameter)
+        ]
+
+        # Parse the arguments into values for the parameters
+        parse_arguments(args, params)
+
+    @abc.abstractmethod
     def execute(self, data: Data) -> Any:
-        ...-
+        ...
 
 
 class NothingCommand(Command, identifier=None):
 
+    @override
     def declare_parameters(self) -> None:
         pass
 
+    @override
     def execute(self, data: Data) -> str:
         return ""
 
 
 class UnknownCommand(Command, identifier=None):
 
+    @override
     def declare_parameters(self) -> None:
-        self.unknown_identifier = declare_parameter(str)
+        self.unknown_identifier = declare_parameter("unknown_identifier", str)
 
+    @override
     def execute(self, data: Data) -> str:
-        return f"unknown command: {self.unknown_identifier!r}"
+        return f"unknown command: {self.unknown_identifier.value!r}"
 
 
 class ArgumentErrorCommand(Command, identifier=None):
 
+    @override
     def declare_parameters(self) -> None:
-        self.error_message = declare_parameter(str)
+        self.error_message = declare_parameter("error_message", str)
 
+    @override
     def execute(self, data: Data) -> Any:
-        return f"argument error: {self.error_message!s}"
+        return f"argument error: {self.error_message.value!s}"
