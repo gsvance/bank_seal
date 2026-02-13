@@ -172,6 +172,7 @@ class ParseMatchMatrix:
         self.params = list(params)
         self.matrix: dict[tuple[int, str], dict[int, Any]] = {}
         for i_arg, arg in enumerate(args):
+            self.matrix[i_arg, arg] = {}
             for i_param, param in enumerate(self.params):
                 self.matrix[i_arg, arg][i_param] = param.parse(i_arg, arg)
 

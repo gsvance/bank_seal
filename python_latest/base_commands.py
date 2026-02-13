@@ -84,15 +84,13 @@ class Command(abc.ABC):
             if isinstance(attribute, Parameter):
                 yield attribute_name, attribute
 
-    @property
-    def min_args(self) -> int:
+    def count_min_args(self) -> int:
         return sum(
             1 for _, parameter in self.iter_parameters()
             if not parameter.optional
         )
 
-    @property
-    def max_args(self) -> int:
+    def count_max_args(self) -> int:
         return sum(1 for _ in self.iter_parameters())
 
     def __init__(self, args: Sequence[str]) -> None:
@@ -107,13 +105,14 @@ class Command(abc.ABC):
             parameters[attribute_name] = parameter
 
         # Make sure the arguments make sense
-        if len(args) < self.min_args:
+        min_args, max_args = self.count_min_args(), self.count_max_args()
+        if len(args) < min_args:
             raise ArgumentParseError(
-                f"this command requires at least {self.min_args} arguments(s)"
+                f"this command requires at least {min_args} arguments(s)"
             )
-        if len(args) > self.max_args:
+        if len(args) > max_args:
             raise ArgumentParseError(
-                f"this command accepts at most {self.max_args} argument(s)"
+                f"this command accepts at most {max_args} argument(s)"
             )
 
         # Parse the arguments by matching them against the parameters
