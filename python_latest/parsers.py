@@ -1,18 +1,17 @@
 """A collection of parser functions to be used with command signatures.
 
-A parser (indicated by the generic Parser[T] type alias) is any callable that
-takes a string and returns an instance of T on success or None on failure.
+A parser (indicated by the generic Parser[R] type alias) is any callable that
+takes a string and returns an instance of type R on success or None on failure.
 """
 
 import typing
-from typing import Callable
 
 from date import Date
 from money import Money
 from name import Name
 
 
-type Parser[T] = Callable[[str], T | None]
+type Parser[R] = typing.Callable[[str], R | None]
 
 
 def parse_str(s: str) -> str | None:
@@ -66,7 +65,7 @@ def get_parser(parse_type: type[Date]) -> Parser[Date]: ...
 @typing.overload
 def get_parser(parse_type: type[Money]) -> Parser[Money]: ...
 @typing.overload
-def get_parser[PT](parse_type: type[PT]) -> Parser[PT]: ...
+def get_parser[T](parse_type: type[T]) -> Parser[T]: ...
 
 
 def get_parser(parse_type: type) -> Parser[object]:

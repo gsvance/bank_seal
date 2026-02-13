@@ -1,13 +1,10 @@
 import abc
-from collections import deque
-from collections.abc import Iterator, Sequence
-import typing
-from typing import Any, Self
+from typing import Any, override, Self
 
 from data import Data
 from name import Name
-from signature import (
-    ArgumentParseError,  declare_parameter, Parameter, ParseMatchMatrix,
+from parameters import (
+    ArgumentParseError,  declare_parameter, Parameter, parse_arguments,
 )
 
 
@@ -56,9 +53,9 @@ class Command(abc.ABC):
     # of Self) because it returns subclass instances rather than instances of
     # *this* class specifically
     @classmethod
-    def create(cls, words: deque[str]) -> 'Command':
+    def create(cls, words: list[str]) -> 'Command':
         try:
-            identifier = words.popleft()
+            identifier = words.pop(0)
         except IndexError:
             return NothingCommand([])
 
@@ -72,54 +69,24 @@ class Command(abc.ABC):
         try:
             return command_subclass(args)
         except ArgumentParseError as e:
-            return ArgumentErrorCommand(e.args)
+            return ArgumentErrorCommand(list(e.args))
 
     @abc.abstractmethod
     def declare_parameters(self) -> None:
         ...
 
-    def iter_parameters(self) -> Iterator[tuple[str, Parameter]]:
-        for attribute_name in dir(self):
-            attribute = getattr(self, attribute_name)
-            if isinstance(attribute, Parameter):
-                yield attribute_name, attribute
-
-    def count_min_args(self) -> int:
-        return sum(
-            1 for _, parameter in self.iter_parameters()
-            if not parameter.optional
-        )
-
-    def count_max_args(self) -> int:
-        return sum(1 for _ in self.iter_parameters())
-
-    def __init__(self, args: Sequence[str]) -> None:
+    def __init__(self, args: list[str]) -> None:
         # Let the subclass declare its parameters as instance attributes
         self.declare_parameters()
 
-        # Detect the declared parameters using introspection and validate them
-        parameters: dict[str, Parameter] = {}
-        for attribute_name, parameter in self.iter_parameters():
-            for other_parameter in parameters.values():
-                other_parameter.check_for_obvious_conflicts(parameter)
-            parameters[attribute_name] = parameter
+        # Now detect the declared parameters using introspection
+        params = [
+            attribute for attribute in vars(self).values()
+            if isinstance(attribute, Parameter)
+        ]
 
-        # Make sure the arguments make sense
-        min_args, max_args = self.count_min_args(), self.count_max_args()
-        if len(args) < min_args:
-            raise ArgumentParseError(
-                f"this command requires at least {min_args} arguments(s)"
-            )
-        if len(args) > max_args:
-            raise ArgumentParseError(
-                f"this command accepts at most {max_args} argument(s)"
-            )
-
-        # Parse the arguments by matching them against the parameters
-        matrix = ParseMatchMatrix(args, list(parameters.values()))
-        while not matrix.is_empty():
-            parsed_argument, matched_parameter = matrix.pop_match()
-            matched_parameter.parsed_value = parsed_argument
+        # Parse the arguments into values for the parameters
+        parse_arguments(args, params)
 
     @abc.abstractmethod
     def execute(self, data: Data) -> Any:
@@ -128,32 +95,32 @@ class Command(abc.ABC):
 
 class NothingCommand(Command, identifier=None):
 
-    @typing.override
+    @override
     def declare_parameters(self) -> None:
         pass
 
-    @typing.override
+    @override
     def execute(self, data: Data) -> str:
         return ""
 
 
 class UnknownCommand(Command, identifier=None):
 
-    @typing.override
+    @override
     def declare_parameters(self) -> None:
-        self.unknown_identifier = declare_parameter('unknown_identifier', str)
+        self.unknown_identifier = declare_parameter("unknown_identifier", str)
 
-    @typing.override
+    @override
     def execute(self, data: Data) -> str:
         return f"unknown command: {self.unknown_identifier.value!r}"
 
 
 class ArgumentErrorCommand(Command, identifier=None):
 
-    @typing.override
+    @override
     def declare_parameters(self) -> None:
-        self.error_message = declare_parameter('error_message', str)
+        self.error_message = declare_parameter("error_message", str)
 
-    @typing.override
+    @override
     def execute(self, data: Data) -> Any:
         return f"argument error: {self.error_message.value!s}"

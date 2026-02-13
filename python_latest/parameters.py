@@ -27,8 +27,9 @@ the first argument. Parameters can also be optional, meaning that no argument
 which parses appropriately is required to appear.
 """
 
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable
 import dataclasses
+import itertools
 from typing import Any, Final, Self
 
 from name import Name
@@ -112,7 +113,7 @@ class Parameter[T]:
     parser: Parser[T]
     indices: ParameterIndices
     optional: bool
-    parsed_value: (T | None) | UnsetType
+    _value: (T | None) | UnsetType
 
     def check_for_obvious_conflicts(self, other: Self) -> None:
         """Raise an error if two parameters conflict in some obvious way."""
@@ -135,11 +136,16 @@ class Parameter[T]:
             return None
         return self.parser(s)
 
+    def set_value(self, value: T | None) -> None:
+        if value is None and not self.optional:
+            raise ValueError("non-optional parameter cannot be set to None")
+        self._value = value
+
     @property
     def value(self) -> T | None:
-        if isinstance(self.parsed_value, UnsetType):
-            raise ValueError
-        return self.parsed_value
+        if isinstance(self._value, UnsetType):
+            raise ValueError("retrieving value from an unset parameter")
+        return self._value
 
 
 def declare_parameter[T](
@@ -160,27 +166,49 @@ def declare_parameter[T](
         parser=parser_function,
         indices=indices_object,
         optional=optional,
-        parsed_value=start_value,
+        _value=start_value,
     )
+
+
+type EnumeratedList[E] = list[tuple[int, E]]
+
+
+def fetch_from_enumerated_list[T](
+    enumerated_list: EnumeratedList[T], i: int,
+) -> T:
+    for i_value, value in enumerated_list:
+        if i_value == i:
+            return value
+    raise IndexError("no pair was found with i = {i}")
+
+
+def remove_from_enumerated_list[T](
+    enumerated_list: EnumeratedList[T], i: int,
+) -> None:
+    for true_index, (i_value, _value) in enumerate(enumerated_list):
+        if i_value == i:
+            del enumerated_list[true_index]
+            return
+    raise ValueError(f"no pair was found with i = {i}")
 
 
 class ParseMatchMatrix:
 
-    def __init__(
-        self, args: Sequence[str], params: Sequence[Parameter],
-    ) -> None:
-        self.params = list(params)
-        self.matrix: dict[tuple[int, str], dict[int, Any]] = {}
-        for i_arg, arg in enumerate(args):
-            self.matrix[i_arg, arg] = {}
-            for i_param, param in enumerate(self.params):
-                self.matrix[i_arg, arg][i_param] = param.parse(i_arg, arg)
+    def __init__(self, args: list[str], params: list[Parameter]) -> None:
+        # Copy the args and params and then enumerate both
+        self.args: EnumeratedList[str] = list(enumerate(args[:]))
+        self.params: EnumeratedList[Parameter] = list(enumerate(params[:]))
+
+        self.matrix: dict[tuple[int, int], Any] = {}
+        for i_arg, arg in self.args:
+            for i_param, param in self.params:
+                self.matrix[i_arg, i_param] = param.parse(i_arg, arg)
 
         # Check columns to ensure all required params have something
-        for i_param, param in enumerate(self.params):
+        for i_param, param in self.params:
             possibilities = 0
-            for i_arg, arg in self.matrix:
-                if self.matrix[i_arg, arg][i_param] is not None:
+            for i_arg, arg in self.args:
+                if self.matrix[i_arg, i_param] is not None:
                     possibilities += 1
             if possibilities == 0 and not param.optional:
                 raise ArgumentParseError(
@@ -191,31 +219,65 @@ class ParseMatchMatrix:
         return len(self.matrix) == 0
 
     def pop_match[T](self) -> tuple[T, Parameter[T]]:
-        for i_arg, arg in self.matrix:
-            row_results = self.condense_row(i_arg, arg)
+        for i_arg, arg in self.args:
+            row_results = self.condense_row(i_arg)
             if len(row_results) == 0:
                 raise ArgumentParseError(
                     f"argument {arg!r} matches no parameters"
                 )
             if len(row_results) == 1:
-                matched_i_param, parsed_arg = list(row_results.items())[0]
-                self.remove_arg(i_arg, arg)
-                self.remove_param(matched_i_param)
-                return parsed_arg, self.params[matched_i_param]
-        raise ArgumentParseError(
-            f"failed to match argument {list(self.matrix.keys())[0][1]!r}"
-        )
+                i_param, parsed_arg = row_results.popitem()
+                param = fetch_from_enumerated_list(self.params, i_param)
+                self.remove_arg(i_arg)
+                self.remove_param(i_param)
+                return parsed_arg, param
 
-    def condense_row(self, i_arg: int, arg: str) -> dict[int, Any]:
-        return {
-            i_param: parsed_arg
-            for i_param, parsed_arg in self.matrix[i_arg, arg].items()
-            if parsed_arg is not None
-        }
+        _i_arg, arg = self.args.pop(0)
+        raise ArgumentParseError(f"failed to match argument {arg!r}")
 
-    def remove_arg(self, i_arg: int, arg: str) -> None:
-        del self.matrix[i_arg, arg]
+    def condense_row(self, i_arg: int) -> dict[int, Any]:
+        row_results: dict[int, Any] = {}
+        for i_param, _param in self.params:
+            parsed_arg = self.matrix[i_arg, i_param]
+            if parsed_arg is not None:
+                row_results[i_param] = parsed_arg
+        return row_results
+
+    def remove_arg(self, i_arg: int) -> None:
+        for i_param, _param in self.params:
+            del self.matrix[i_arg, i_param]
+        remove_from_enumerated_list(self.args, i_arg)
 
     def remove_param(self, i_param: int) -> None:
-        for row in self.matrix.values():
-            del row[i_param]
+        for i_arg, _arg in self.args:
+            del self.matrix[i_arg, i_param]
+        remove_from_enumerated_list(self.params, i_param)
+
+
+def parse_arguments(args: list[str], params: list[Parameter]) -> None:
+    # Check for obvious conflicts between parameters
+    for param_1, param_2 in itertools.combinations(params, 2):
+        param_1.check_for_obvious_conflicts(param_2)
+
+    # Count the minimum and maximum numbers of acceptable args
+    min_args, max_args = 0, 0
+    for param in params:
+        max_args += 1
+        if not param.optional:
+            min_args += 1
+
+    # Make sure the arguments make sense
+    if len(args) < min_args:
+        raise ArgumentParseError(
+            f"this command requires at least {min_args} arguments(s)"
+        )
+    if len(args) > max_args:
+        raise ArgumentParseError(
+            f"this command accepts at most {max_args} argument(s)"
+        )
+
+    # Parse the arguments by matching them against the parameters
+    matrix = ParseMatchMatrix(args, params)
+    while not matrix.is_empty():
+        parsed_arg, matched_param = matrix.pop_match()
+        matched_param.set_value(parsed_arg)
