@@ -1,18 +1,18 @@
 """Contains a dataclass for pedantically validated "name" strings."""
 
-from dataclasses import dataclass
+import dataclasses
 import string
 from typing import Final
 
 
-ASCII_LETTERS: Final[frozenset] = frozenset(string.ascii_letters)
-ASCII_DIGITS: Final[frozenset] = frozenset(string.digits)
-VALID_CHARACTERS: Final[frozenset] = (
+ASCII_LETTERS: Final[frozenset[str]] = frozenset(string.ascii_letters)
+ASCII_DIGITS: Final[frozenset[str]] = frozenset(string.digits)
+VALID_CHARACTERS: Final[frozenset[str]] = (
     ASCII_LETTERS | ASCII_DIGITS | frozenset('_')
 )
 
 
-@dataclass(repr=False, frozen=True, slots=True)
+@dataclasses.dataclass(repr=False, frozen=True, match_args=False, slots=True)
 class Name:
     """Names are a limited subset of all strings subject to validation logic.
 
